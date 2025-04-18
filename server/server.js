@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import "dotenv/config";
+import { sales_script } from './assets/script.js';
 
 const app = express();
 app.use(cors());
@@ -13,10 +14,12 @@ app.get("/token", async (req, res) => {
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
+          response_format: "html", 
         },
         body: JSON.stringify({
           model: "gpt-4o-realtime-preview-2024-12-17",
           voice: "verse",
+          
         }),
       });
   
