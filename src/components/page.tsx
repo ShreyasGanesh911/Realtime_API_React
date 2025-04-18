@@ -1,21 +1,26 @@
 import{ useEffect, useRef, useState } from 'react'
 import SessionControls from './SessionControls';
-type EventMessage = {
-    event_id?: string;
-    timestamp?: string;
-    [key: string]: any;
-  };
+import { sales_script } from '../assets/script';
+import MessageBubble from './MessageBubble';
+import { Message,AssistantMessage,EventMessage } from "../types/types";
 const page = () => {
-    const [isSessionActive, setIsSessionActive] = useState<boolean>(false);
+  const [isSessionActive, setIsSessionActive] = useState<boolean>(false);
   const [events, setEvents] = useState<any[]>([]);
   const [dataChannel, setDataChannel] = useState<RTCDataChannel | null>(null);
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const audioElement = useRef<HTMLAudioElement | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [messages, setMessages] = useState<Message[]>([
+    { text: `Welcome! 👋 \n\nTo get started, press the <span class="text-blue-500 hover:text-blue-600 hover:cursor-pointer">Start Assessment</span> button.`, isUser: false, timestamp: new Date() },
+  ]);
   async function startSession() {
     // Get a session token for OpenAI Realtime API
     const tokenResponse = await fetch("http://localhost:8000/token");
+    if (!tokenResponse.ok) {
+      console.error("Failed to fetch token:", tokenResponse.statusText);
+      return;
+    }
     const data = await tokenResponse.json();
     const EPHEMERAL_KEY = data.client_secret.value;
 
@@ -112,6 +117,7 @@ const page = () => {
   }
       
   function sendTextMessage(message: string) {
+    setMessages([...messages, { isUser: true, text: message, timestamp: new Date() }]);
     const event: EventMessage = {
       type: "conversation.item.create",
       item: {
@@ -129,61 +135,157 @@ const page = () => {
     sendClientEvent(event);
     sendClientEvent({ type: "response.create" });
   }
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+  // useEffect(() => {
+  //   if (dataChannel) {
+  //     // Append new server events to the list
+  //     dataChannel.addEventListener("message", (e) => {
+  //       const event = JSON.parse(e.data);
+  //       if (!event.timestamp) {
+  //         event.timestamp = new Date().toLocaleTimeString();
+  //       }
+
+  //       setEvents((prev) => [event, ...prev]);
+  //     });
+
+  //     // Set session active when the data channel is opened
+  //     dataChannel.addEventListener("open", () => {
+  //       setIsSessionActive(true);
+  //       setEvents([]);
+      
+  //       const systemEvent: EventMessage = {
+  //         type: "conversation.item.create",
+  //         item: {
+  //           type: "message",
+  //           role: "user",
+  //           content: [
+  //             {
+  //               type: "input_text",
+  //               text: "Hi, tell me a joke",
+  //             },
+  //           ],
+  //         },
+  //       };
+      
+  //       // ✅ Delay sending a bit to avoid race condition
+  //       setTimeout(() => {
+  //         sendClientEvent(systemEvent);
+  //       },500); // 100ms is safe
+  //     });
+  //   }
+  // }, [dataChannel]);
+
+  // useEffect(() => {
+  //   if (dataChannel) {
+  //     // Append new server events to the list
+  //     dataChannel.addEventListener("message", (e) => {
+  //       const event = JSON.parse(e.data);
+  //       if (!event.timestamp) {
+  //         event.timestamp = new Date().toLocaleTimeString();
+  //       }
+
+  //       setEvents((prev) => [event, ...prev]);
+  //     });
+
+  //     // Set session active when the data channel is opened
+  //     dataChannel.addEventListener("open", () => {
+  //       setIsSessionActive(true);
+  //       setEvents([]);
+      
+  //       const systemEvent: EventMessage = {
+  //         type: "conversation.item.create",
+  //         item: {
+  //           type: "message",
+  //           role: "user",
+  //           content: [
+  //             {
+  //               type: "input_text",
+  //               text: sales_script
+  //             },
+  //           ],
+  //         },
+  //       };
+  //       setTimeout(() => {
+  //         sendClientEvent(systemEvent);
+         
+  //       }, 500);
+        
+  //     });
+  //   }
+  // }, [dataChannel]);
   useEffect(() => {
     if (dataChannel) {
-      // Append new server events to the list
-      dataChannel.addEventListener("message", (e) => {
-        const event = JSON.parse(e.data);
-        if (!event.timestamp) {
-          event.timestamp = new Date().toLocaleTimeString();
-        }
-
-        setEvents((prev) => [event, ...prev]);
-      });
-
-      // Set session active when the data channel is opened
+      // Log when the data channel is open
       dataChannel.addEventListener("open", () => {
+        console.log("Data channel is open!");
         setIsSessionActive(true);
         setEvents([]);
+       setTimeout(() => {
+        sendTextMessage("Start Assessment"); // Send the initial message to start the assessment
+       }, 2000); // Delay to ensure the data channel is open before sending the event
+        // Send the system event after the data channel is open
+        const systemEvent: EventMessage = {
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: sales_script
+              },
+            ],
+          },
+        };
+        setTimeout(() => {
+          console.log("Sending system event:", systemEvent);
+          sendClientEvent(systemEvent);
+        }, 100);
+      });
+  
+      // Log the state of the data channel
+      console.log("Data channel state:", dataChannel.readyState);
+  
+      // Listen for incoming messages from the data channel
+      dataChannel.addEventListener("message", (e) => {
+        const eventData:AssistantMessage = JSON.parse(e.data); // Store the raw event data for debugging
+        if(e.data.type ==="conversation.item.created"){
+          console.log("User text",eventData); // Log parsed event data
+        }
+        // console.log("User text", e.data);
+        let transcript = eventData.response?.output[0]?.content[0]?.transcript; // Extract the transcript from the event data
+        if(transcript) {
+          console.log("Transcription", transcript); // Log parsed event data
+          transcript = transcript.replace(/```html|```/g, "").trim();
+          setMessages((prev) => [...prev, {isUser:false,text:transcript,timestamp:new Date()}]); // Store the event data in
+        }
       });
     }
+  
+    // Cleanup when the component is unmounted or dataChannel is changed
+    return () => {
+      if (dataChannel) {
+        dataChannel.removeEventListener("message", () => {});
+        dataChannel.removeEventListener("open", () => {});
+      }
+    };
   }, [dataChannel]);
-
-
+  
   return (
     <>
-       {/* <nav className="absolute top-0 left-0 right-0 h-16 flex items-center">
-        <div className="flex items-center gap-4 w-full m-4 pb-2 border-0 border-b border-solid border-gray-200">
-        
-          <h1>realtime console</h1>
-        </div>
-      </nav>
-      <main className="absolute top-16 left-0 right-0 bottom-0">
-        <section className="absolute top-0 left-0 right-[380px] bottom-0 flex">
-          <section className="absolute top-0 left-0 right-0 bottom-32 px-4 overflow-y-auto">
-            
-          </section>
-          <section className="absolute h-32 left-0 right-0 bottom-0 p-4">
-            <SessionControls
-              startSession={startSession}
-              stopSession={stopSession}
-              sendClientEvent={sendClientEvent}
-              sendTextMessage={sendTextMessage}
-              serverEvents={events}
-              isSessionActive={isSessionActive}
-            />
-          </section>
-        </section>
-
-      </main> */}
         <div className="flex justify-center items-start min-h-screen bg-gray-50 p-4">
       <div className="w-full max-w-[40%] relative h-[90vh] bg-white rounded-2xl shadow-lg">
         {/* Chat Messages Area */}
         <div ref={chatContainerRef} className="h-full overflow-y-auto pb-40 px-6 pt-6">
-          {/* {messages.map((message, index) => (
+          {messages.map((message, index) => (
             <MessageBubble key={index} index={index} message={message}/>
           ))}
-          <div ref={messagesEndRef} /> */}
+          <div ref={messagesEndRef} />
         </div>
         {/* Quick Reply Chips */}
         <div className="absolute bottom-5 left-0 py-2 right-0 px-6 bg-white mr-5">
