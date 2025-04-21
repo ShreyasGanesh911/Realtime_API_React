@@ -11,7 +11,7 @@ const app = express();
 app.use(cors());
 app.use(express.static(path.join(__dirname, '..', 'dist')));
 const apiKey = process.env.OPENAI_API_KEY;
-const port = 8000
+const port = 8888
 app.get("/token", async (req, res) => {
     try {
       const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
@@ -40,6 +40,6 @@ app.get("/token", async (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
   });
 
-  app.listen(port, () => {
+  app.listen(port, "0.0.0.0",() => {
     console.log(`Backend running on http://localhost:${port}`);
   });
