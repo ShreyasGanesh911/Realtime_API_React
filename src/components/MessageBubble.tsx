@@ -1,5 +1,3 @@
-import { marked } from "marked";
-
 interface Message {
     text: string;
     isUser: boolean;
@@ -11,7 +9,6 @@ type Props = {
 }
 
 function MessageBubble({index,message}:Props) {
-    const renderMessage = message.isUser ? message.text : marked(message.text);
   return (
     <>
         <div
