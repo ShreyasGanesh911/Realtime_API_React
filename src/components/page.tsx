@@ -2,20 +2,46 @@ import{ useEffect, useRef, useState } from 'react'
 import SessionControls from './SessionControls';
 import { sales_script } from '../assets/script';
 import MessageBubble from './MessageBubble';
-import { Message,AssistantMessage,EventMessage } from "../types/types";
+import { Message,EventMessage } from "../types/types";
+import { Mic, MicOff } from 'react-feather';
+
 const page = () => {
   const [isSessionActive, setIsSessionActive] = useState<boolean>(false);
+  const [currentText, setCurrentText] = useState<string>('');
+  const [currentMessageId, setCurrentMessageId] = useState<string | null>(null);
+  const [isMicActive, setIsMicActive] = useState<boolean>(false);
   const [events, setEvents] = useState<any[]>([]);
   const [dataChannel, setDataChannel] = useState<RTCDataChannel | null>(null);
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const audioElement = useRef<HTMLAudioElement | null>(null);
+  const mediaStream = useRef<MediaStream | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<Message[]>([
     { text: `Welcome! 👋 \n\nTo get started, press the <span class="text-blue-500 hover:text-blue-600 hover:cursor-pointer">Start Assessment</span> button.`, isUser: false, timestamp: new Date() },
   ]);
+
+  const enableMicrophone = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    if (!peerConnection.current || !mediaStream.current) return;
+    mediaStream.current.getTracks().forEach(track => {
+      track.enabled = true;
+    });
+    setIsMicActive(true);
+  };
+
+  const disableMicrophone = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    if (!peerConnection.current || !mediaStream.current) return;
+    mediaStream.current.getTracks().forEach(track => {
+      track.enabled = false;
+    });
+    setIsMicActive(false);
+  };
+
   async function startSession() {
-    // Get a session token for OpenAI Realtime API
+    try {
+         // Get a session token for OpenAI Realtime API
     const tokenResponse = await fetch("/token");
     if (!tokenResponse.ok) {
       console.error("Failed to fetch token:", tokenResponse.statusText);
@@ -23,13 +49,14 @@ const page = () => {
     }
     const data = await tokenResponse.json();
     const EPHEMERAL_KEY = data.client_secret.value;
-
+    console.log("Ephemeral Key:", EPHEMERAL_KEY);
     // Create a peer connection
     const pc = new RTCPeerConnection();
 
     // Set up to play remote audio from the model
     audioElement.current = document.createElement("audio");
     audioElement.current.autoplay = true;
+
     pc.ontrack = (e) => {
       if (audioElement.current) {
         audioElement.current.srcObject = e.streams[0];
@@ -40,6 +67,11 @@ const page = () => {
     const ms = await navigator.mediaDevices.getUserMedia({
       audio: true,
     });
+    // Start with microphone disabled
+    ms.getTracks().forEach(track => {
+      track.enabled = false;
+    });
+    mediaStream.current = ms;
     pc.addTrack(ms.getTracks()[0]);
 
     // Set up data channel for sending and receiving events
@@ -68,6 +100,10 @@ const page = () => {
     await pc.setRemoteDescription(answer);
 
     peerConnection.current = pc;
+    setIsSessionActive(true);
+    } catch (error) {
+      console.error("Error starting session:", error);
+    }
   }
   
   function stopSession() {
@@ -77,11 +113,12 @@ const page = () => {
     }
 
     // Stop all media senders (tracks) for the peer connection
-    peerConnection.current?.getSenders().forEach((sender) => {
-      if (sender.track) {
-        sender.track.stop();
-      }
-    });
+    if (mediaStream.current) {
+      mediaStream.current.getTracks().forEach((track) => {
+        track.stop();
+      });
+      mediaStream.current = null;
+    }
 
     // Close the peer connection
     if (peerConnection.current) {
@@ -90,8 +127,14 @@ const page = () => {
 
     // Reset session state
     setIsSessionActive(false);
+    setIsMicActive(false);
     setDataChannel(null);
     peerConnection.current = null;
+
+    // Clean up audio element
+    if (audioElement.current) {
+      audioElement.current.srcObject = null;
+    }
   }
 
   function sendClientEvent(message: EventMessage) {
@@ -135,162 +178,147 @@ const page = () => {
     sendClientEvent(event);
     sendClientEvent({ type: "response.create" });
   }
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+
+  const messageHandler = (e: MessageEvent) => {
+    const eventData = JSON.parse(e.data);
+    // console.log("Event Data:", eventData);
+    let transcript = eventData.response?.output[0]?.content[0]?.transcript; // Extract the transcript from the event data
+    if(transcript) 
+      console.log("Transcription", transcript);
+    if (eventData.type === "input_audio_buffer.committed") {
+      setMessages(prev => [...prev, { 
+        id: eventData.event_id,
+        isUser: true, 
+        text: "🎤 Audio message sent", 
+        timestamp: new Date() 
+      }]);
+    }
+    
+    if(eventData.type === "response.audio_transcript.delta") {
+      const deltaText = eventData.delta;
+     
+      if (typeof deltaText === "string") {
+        setMessages(prev => {
+          // Check if we have a previous message from assistant
+          const lastMessage = prev[prev.length - 1];
+          
+          // If no messages or last message is from user, create new one
+          if (!lastMessage || lastMessage.isUser) {
+            const newId = Date.now().toString();
+            setCurrentMessageId(newId);
+            setCurrentText(deltaText);
+            return [...prev, { 
+              id: newId,
+              isUser: false, 
+              text: deltaText, 
+              timestamp: new Date() 
+            }];
+          }
+          
+          // Otherwise update the last message
+          setCurrentText(prev => prev + deltaText);
+          return prev.map((msg, index) => {
+            if (index === prev.length - 1) {
+              return { ...msg, text: msg.text + deltaText };
+            }
+            return msg;
+          });
+        });
+      }
+    }
+    if (eventData.type === "response.done") {
+      // Reset for next message
+      setCurrentMessageId(null);
+      setCurrentText('');
+    }
   };
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-  // useEffect(() => {
-  //   if (dataChannel) {
-  //     // Append new server events to the list
-  //     dataChannel.addEventListener("message", (e) => {
-  //       const event = JSON.parse(e.data);
-  //       if (!event.timestamp) {
-  //         event.timestamp = new Date().toLocaleTimeString();
-  //       }
 
-  //       setEvents((prev) => [event, ...prev]);
-  //     });
-
-  //     // Set session active when the data channel is opened
-  //     dataChannel.addEventListener("open", () => {
-  //       setIsSessionActive(true);
-  //       setEvents([]);
-      
-  //       const systemEvent: EventMessage = {
-  //         type: "conversation.item.create",
-  //         item: {
-  //           type: "message",
-  //           role: "user",
-  //           content: [
-  //             {
-  //               type: "input_text",
-  //               text: "Hi, tell me a joke",
-  //             },
-  //           ],
-  //         },
-  //       };
-      
-  //       // ✅ Delay sending a bit to avoid race condition
-  //       setTimeout(() => {
-  //         sendClientEvent(systemEvent);
-  //       },500); // 100ms is safe
-  //     });
-  //   }
-  // }, [dataChannel]);
-
-  // useEffect(() => {
-  //   if (dataChannel) {
-  //     // Append new server events to the list
-  //     dataChannel.addEventListener("message", (e) => {
-  //       const event = JSON.parse(e.data);
-  //       if (!event.timestamp) {
-  //         event.timestamp = new Date().toLocaleTimeString();
-  //       }
-
-  //       setEvents((prev) => [event, ...prev]);
-  //     });
-
-  //     // Set session active when the data channel is opened
-  //     dataChannel.addEventListener("open", () => {
-  //       setIsSessionActive(true);
-  //       setEvents([]);
-      
-  //       const systemEvent: EventMessage = {
-  //         type: "conversation.item.create",
-  //         item: {
-  //           type: "message",
-  //           role: "user",
-  //           content: [
-  //             {
-  //               type: "input_text",
-  //               text: sales_script
-  //             },
-  //           ],
-  //         },
-  //       };
-  //       setTimeout(() => {
-  //         sendClientEvent(systemEvent);
-         
-  //       }, 500);
-        
-  //     });
-  //   }
-  // }, [dataChannel]);
   useEffect(() => {
     if (dataChannel) {
-      // Log when the data channel is open
       dataChannel.addEventListener("open", () => {
-        console.log("Data channel is open!");
+        // console.log("Data channel is open!");
         setIsSessionActive(true);
         setEvents([]);
-       setTimeout(() => {
-        sendTextMessage("Start Assessment"); // Send the initial message to start the assessment
-       }, 2000); // Delay to ensure the data channel is open before sending the event
-        // Send the system event after the data channel is open
+
+        // Send the system instructions
         const systemEvent: EventMessage = {
           type: "conversation.item.create",
           item: {
             type: "message",
-            role: "user",
+            role: "system",
             content: [
               {
                 type: "input_text",
-                text: sales_script
+                text: `
+                  You are an AI Sales Coach named Nysaa. 
+
+                  You will take the user through a 10-step sales training journey. 
+                  Start with a warm greeting, then ask **Question 1**, wait for the user's answer, give feedback and a score from 1 to 10, and then move to the next question. 
+
+                  Use the following script as your guide, but ask one question at a time:
+${sales_script}
+                `
               },
             ],
           },
         };
+        
+        sendClientEvent(systemEvent);
+
+        // Send initial greeting message
+        const assistantMessageEvent: EventMessage = {
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "assistant",
+            content: [
+              {
+                type: "input_text",
+                text: "Hello! I'm Nysaa, your AI Sales Coach. I'll be guiding you through a 10-step sales training assessment. Are you ready to begin?"
+              },
+            ],
+          },
+        };
+
         setTimeout(() => {
-          console.log("Sending system event:", systemEvent);
-          sendClientEvent(systemEvent);
-        }, 100);
+          sendClientEvent(assistantMessageEvent);
+          sendClientEvent({ type: "response.create" });
+        }, 300);
+
+        setMessages(prev => [...prev, { isUser: true, text: "Starting assessment...", timestamp: new Date() }]);
       });
-  
-      // Log the state of the data channel
-      console.log("Data channel state:", dataChannel.readyState);
-  
-      // Listen for incoming messages from the data channel
-      dataChannel.addEventListener("message", (e) => {
-        const eventData:AssistantMessage = JSON.parse(e.data); // Store the raw event data for debugging
-        if(e.data.type ==="conversation.item.created"){
-          console.log("User text",eventData); // Log parsed event data
-        }
-        // console.log("User text", e.data);
-        let transcript = eventData.response?.output[0]?.content[0]?.transcript; // Extract the transcript from the event data
-        if(transcript) {
-          console.log("Transcription", transcript); // Log parsed event data
-          transcript = transcript.replace(/```html|```/g, "").trim();
-          setMessages((prev) => [...prev, {isUser:false,text:transcript,timestamp:new Date()}]); // Store the event data in
-        }
-      });
+
+      dataChannel.addEventListener("message", messageHandler);
+
+      return () => {
+        dataChannel.removeEventListener("message", messageHandler);
+      };
     }
-  
-    // Cleanup when the component is unmounted or dataChannel is changed
-    return () => {
-      if (dataChannel) {
-        dataChannel.removeEventListener("message", () => {});
-        dataChannel.removeEventListener("open", () => {});
-      }
-    };
   }, [dataChannel]);
-  
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   return (
     <>
         <div className="flex justify-center items-start min-h-screen bg-gray-50 p-4">
-      <div className="w-full max-w-[40%] relative h-[90vh] bg-white rounded-2xl shadow-lg">
+      <div className="w-full 2xl:max-w-[40%] xl:max-w-[70%] relative h-[95vh] bg-white rounded-2xl shadow-lg">
         {/* Chat Messages Area */}
         <div ref={chatContainerRef} className="h-full overflow-y-auto pb-40 px-6 pt-6">
           {messages.map((message, index) => (
-            <MessageBubble key={index} index={index} message={message}/>
+            <MessageBubble 
+              key={message.id || index} 
+              index={index} 
+              message={message}
+              currentText={message.id === currentMessageId ? currentText : message.text}
+            />
           ))}
           <div ref={messagesEndRef} />
         </div>
         {/* Quick Reply Chips */}
         <div className="absolute bottom-5 left-0 py-2 right-0 px-6 bg-white mr-5">
-          
-            {/* {quickReplyOptions.map((option, index) => <MessageChips index={index} option={option} setInputText={setInputText}/>)} */}
             <SessionControls
               startSession={startSession}
               stopSession={stopSession}
@@ -299,12 +327,26 @@ const page = () => {
               serverEvents={events}
               isSessionActive={isSessionActive}
             />
-        
+            {isSessionActive && (
+              <button
+                onMouseDown={enableMicrophone}
+                onMouseUp={disableMicrophone}
+                onMouseLeave={disableMicrophone}
+                onTouchStart={enableMicrophone}
+                onTouchEnd={disableMicrophone}
+                className={`absolute sm:right-24 right-20 mr-2 bottom-5 p-2 rounded-full transition-colors duration-150 select-none ${
+                  isMicActive 
+                    ? 'bg-blue-500 text-white' 
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {isMicActive ? <Mic size={18} /> : <MicOff size={18} />}
+              </button>
+            )}
         </div>
         </div>
     </div>
     </>
-
   )
 }
 
