@@ -45,7 +45,7 @@ function SessionActive({ stopSession, sendTextMessage }: SessionActiveProps) {
   return (
     <div className="flex items-center justify-center w-full h-full gap-4 ">
       <div className="absolute bottom-1 left-0 right-0 bg-white mx-2 flex items-center justify-center">
-        <div className="flex items-center gap-2 p-1 w-full bg-white rounded-full shadow-lg border border-gray-100 pr-5">
+        <div className="flex items-center sm:gap-2 gap-1 p-1 w-full bg-white rounded-full shadow-lg border border-gray-100 sm:pr-4 pr-2">
          <input onKeyDown={(e) => {if (e.key === "Enter" && message.trim()) {handleSendClientEvent();}}}
         type="text"
         placeholder="Type your message..."
@@ -53,7 +53,7 @@ function SessionActive({ stopSession, sendTextMessage }: SessionActiveProps) {
         value={message} onChange={(e) => setMessage(e.target.value)}/>
 
       <button onClick={() => {if (message.trim()) {handleSendClientEvent();}}}
-        className="p-2 text-blue-500 hover:text-blue-800 transition-colors hover:cursor-pointer duration-200 disabled:text-gray-300">
+        className="sm:p-1 p-1 text-blue-500 hover:text-blue-800 transition-colors hover:cursor-pointer duration-200 disabled:text-gray-300">
          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>

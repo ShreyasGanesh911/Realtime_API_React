@@ -6,9 +6,10 @@ interface Message {
 type Props = {
     index: number
     message:Message
+    currentText:string
 }
 
-function MessageBubble({index,message}:Props) {
+function MessageBubble({index,message,currentText}:Props) {
   return (
     <>
         <div
@@ -16,16 +17,16 @@ function MessageBubble({index,message}:Props) {
               className={`flex ${message.isUser ? 'justify-end' : 'justify-start'} mb-4`}
             >
               <div
-                className={`max-w-[70%] p-4 rounded-2xl shadow-sm
+                className={`sm:max-w-[70%] max-w-[90%] p-3 xl:p-4 rounded-2xl shadow-sm
                   ${message.isUser 
-                    ? 'bg-blue-600 text-white rounded-br-none' 
-                    : 'bg-gray-100 text-gray-800 rounded-bl-none'
+                    ? 'bg-blue-600 text-white rounded-br-none ' 
+                    : 'bg-gray-100 text-gray-800 rounded-bl-none text-sm '
                   }`}
               >
                 {message.isUser ? (
                   message.text
                 ) : (
-                  <div dangerouslySetInnerHTML={{ __html: message.text }} />
+                  <div className="" dangerouslySetInnerHTML={{ __html: currentText? currentText : message.text }} />
                 )}
               </div>
             </div>
