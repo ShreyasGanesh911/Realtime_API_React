@@ -19,4 +19,6 @@ export type EventMessage = {
     text: string;
     isUser: boolean;
     timestamp?: Date;
+    id?: string;
+    isComplete?: boolean;
   }
