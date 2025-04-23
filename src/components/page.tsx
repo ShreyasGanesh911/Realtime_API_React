@@ -42,7 +42,7 @@ const page = () => {
   async function startSession() {
     try {
          // Get a session token for OpenAI Realtime API
-    const tokenResponse = await fetch("/token");
+    const tokenResponse = await fetch("http://localhost:8888/token");
     if (!tokenResponse.ok) {
       console.error("Failed to fetch token:", tokenResponse.statusText);
       return;
@@ -52,17 +52,14 @@ const page = () => {
     console.log("Ephemeral Key:", EPHEMERAL_KEY);
     // Create a peer connection
     const pc = new RTCPeerConnection();
-
     // Set up to play remote audio from the model
     audioElement.current = document.createElement("audio");
     audioElement.current.autoplay = true;
-
     pc.ontrack = (e) => {
       if (audioElement.current) {
         audioElement.current.srcObject = e.streams[0];
       }
     };
-
     // Add local audio track for microphone input in the browser
     const ms = await navigator.mediaDevices.getUserMedia({
       audio: true,
@@ -73,15 +70,12 @@ const page = () => {
     });
     mediaStream.current = ms;
     pc.addTrack(ms.getTracks()[0]);
-
     // Set up data channel for sending and receiving events
     const dc = pc.createDataChannel("oai-events");
     setDataChannel(dc);
-
     // Start the session using the Session Description Protocol (SDP)
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-
     const baseUrl = "https://api.openai.com/v1/realtime";
     const model = "gpt-4o-realtime-preview-2024-12-17";
     const sdpResponse = await fetch(`${baseUrl}?model=${model}`, {
@@ -111,7 +105,6 @@ const page = () => {
     if (dataChannel) {
       dataChannel.close();
     }
-
     // Stop all media senders (tracks) for the peer connection
     if (mediaStream.current) {
       mediaStream.current.getTracks().forEach((track) => {
@@ -119,18 +112,15 @@ const page = () => {
       });
       mediaStream.current = null;
     }
-
     // Close the peer connection
     if (peerConnection.current) {
       peerConnection.current.close();
     }
-
     // Reset session state
     setIsSessionActive(false);
     setIsMicActive(false);
     setDataChannel(null);
     peerConnection.current = null;
-
     // Clean up audio element
     if (audioElement.current) {
       audioElement.current.srcObject = null;
@@ -141,24 +131,15 @@ const page = () => {
     if (dataChannel) {
       const timestamp = new Date().toLocaleTimeString();
       message.event_id = message.event_id || crypto.randomUUID();
-
       // Send event before setting timestamp since the backend peer doesn't expect this field
       dataChannel.send(JSON.stringify(message));
-
       // Guard just in case the timestamp exists by miracle
-      if (!message.timestamp) {
-        message.timestamp = timestamp;
-      }
-
+      if (!message.timestamp) message.timestamp = timestamp;
+    
       setEvents((prev) => [message, ...prev]);
-    } else {
-      console.error(
-        "Failed to send message - no data channel available",
-        message
-      );
-    }
+    } else  console.error("Failed to send message - no data channel available",message);
+    
   }
-      
   function sendTextMessage(message: string) {
     setMessages([...messages, { isUser: true, text: message, timestamp: new Date() }]);
     const event: EventMessage = {
@@ -174,14 +155,12 @@ const page = () => {
         ],
       },
     };
-  
     sendClientEvent(event);
     sendClientEvent({ type: "response.create" });
   }
 
   const messageHandler = (e: MessageEvent) => {
     const eventData = JSON.parse(e.data);
-    // console.log("Event Data:", eventData);
     let transcript = eventData.response?.output[0]?.content[0]?.transcript; // Extract the transcript from the event data
     if(transcript) 
       console.log("Transcription", transcript);
@@ -193,10 +172,8 @@ const page = () => {
         timestamp: new Date() 
       }]);
     }
-    
     if(eventData.type === "response.audio_transcript.delta") {
       const deltaText = eventData.delta;
-     
       if (typeof deltaText === "string") {
         setMessages(prev => {
           // Check if we have a previous message from assistant
@@ -214,7 +191,6 @@ const page = () => {
               timestamp: new Date() 
             }];
           }
-          
           // Otherwise update the last message
           setCurrentText(prev => prev + deltaText);
           return prev.map((msg, index) => {
@@ -232,15 +208,13 @@ const page = () => {
       setCurrentText('');
     }
   };
-
   useEffect(() => {
     if (dataChannel) {
       dataChannel.addEventListener("open", () => {
         // console.log("Data channel is open!");
         setIsSessionActive(true);
         setEvents([]);
-
-        // Send the system instructions
+        // Send the sales script once the channel is open
         const systemEvent: EventMessage = {
           type: "conversation.item.create",
           item: {
@@ -251,12 +225,9 @@ const page = () => {
                 type: "input_text",
                 text: `
                   You are an AI Sales Coach named Nysaa. 
-
                   You will take the user through a 10-step sales training journey. 
                   Start with a warm greeting, then ask **Question 1**, wait for the user's answer, give feedback and a score from 1 to 10, and then move to the next question. 
-
-                  Use the following script as your guide, but ask one question at a time:
-${sales_script}
+                  Use the following script as your guide, but ask one question at a time: ${sales_script}
                 `
               },
             ],
@@ -264,8 +235,7 @@ ${sales_script}
         };
         
         sendClientEvent(systemEvent);
-
-        // Send initial greeting message
+        // Send a message to the user to indicate the assessment has started
         const assistantMessageEvent: EventMessage = {
           type: "conversation.item.create",
           item: {
@@ -273,23 +243,19 @@ ${sales_script}
             role: "assistant",
             content: [
               {
-                type: "input_text",
-                text: "Hello! I'm Nysaa, your AI Sales Coach. I'll be guiding you through a 10-step sales training assessment. Are you ready to begin?"
+                type: "text",
+                text: sales_script
               },
             ],
           },
         };
-
         setTimeout(() => {
           sendClientEvent(assistantMessageEvent);
-          sendClientEvent({ type: "response.create" });
         }, 300);
-
-        setMessages(prev => [...prev, { isUser: true, text: "Starting assessment...", timestamp: new Date() }]);
+        setMessages([...messages, { isUser: true, text: "Starting assessment", timestamp: new Date() }]);
+        sendClientEvent({ type: "response.create" });
       });
-
       dataChannel.addEventListener("message", messageHandler);
-
       return () => {
         dataChannel.removeEventListener("message", messageHandler);
       };
@@ -305,7 +271,6 @@ ${sales_script}
     <>
         <div className="flex justify-center items-start min-h-screen bg-gray-50 p-4">
       <div className="w-full 2xl:max-w-[40%] xl:max-w-[70%] relative h-[95vh] bg-white rounded-2xl shadow-lg">
-        {/* Chat Messages Area */}
         <div ref={chatContainerRef} className="h-full overflow-y-auto pb-40 px-6 pt-6">
           {messages.map((message, index) => (
             <MessageBubble 
@@ -317,7 +282,6 @@ ${sales_script}
           ))}
           <div ref={messagesEndRef} />
         </div>
-        {/* Quick Reply Chips */}
         <div className="absolute bottom-5 left-0 py-2 right-0 px-6 bg-white mr-5">
             <SessionControls
               startSession={startSession}
@@ -334,13 +298,30 @@ ${sales_script}
                 onMouseLeave={disableMicrophone}
                 onTouchStart={enableMicrophone}
                 onTouchEnd={disableMicrophone}
-                className={`absolute sm:right-24 right-20 mr-2 bottom-5 p-2 rounded-full transition-colors duration-150 select-none ${
-                  isMicActive 
-                    ? 'bg-blue-500 text-white' 
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
+                className={`
+                  absolute sm:right-24 right-20 mr-2 bottom-4 p-3
+                  rounded-full transition-all duration-300 ease-in-out
+                  shadow-md hover:shadow-lg transform hover:scale-105
+                  flex items-center justify-center
+                  ${isMicActive 
+                    ? 'bg-blue-500 text-white animate-pulse ring-4 ring-blue-300 ring-opacity-50' 
+                    : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                  }
+                  ${isMicActive ? 'scale-110' : 'scale-100'}
+                `}
+                style={{
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)'
+                }}
               >
-                {isMicActive ? <Mic size={18} /> : <MicOff size={18} />}
+                {isMicActive ? (
+                  <div className="relative">
+                    <Mic size={18} className="animate-bounce" />
+                    <div className="absolute -inset-1 bg-blue-500 rounded-full opacity-30 animate-ping" />
+                  </div>
+                ) : (
+                  <MicOff size={18} />
+                )}
               </button>
             )}
         </div>
