@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CloudLightning, CloudOff} from "react-feather";
 import Button from "./Button";
+import { successToast } from "../Toasts/toast";
 
 type SessionStoppedProps = {
   startSession: () => void;
@@ -10,6 +11,7 @@ function SessionStopped({ startSession }: SessionStoppedProps) {
   const [isActivating, setIsActivating] = useState(false);
 
   function handleStartSession() {
+    successToast("Starting Assessment ")
     if (isActivating) return;
 
     setIsActivating(true);
@@ -17,7 +19,7 @@ function SessionStopped({ startSession }: SessionStoppedProps) {
   }
 
   return (
-    <div className="flex items-center justify-center w-full h-full mt-2 ">
+    <div className="flex items-center justify-center pb-2 w-full h-full mt-2 ">
       <Button
         onClick={handleStartSession}
         className={isActivating ? "bg-blue-300 text-blue-600" : "bg-white text-blue-600 hover:bg-blue-50"}
@@ -43,8 +45,8 @@ function SessionActive({ stopSession, sendTextMessage }: SessionActiveProps) {
   }
 
   return (
-    <div className="flex items-center justify-center w-full h-full gap-4 ">
-      <div className="absolute bottom-1 left-0 right-0 bg-white mx-2 flex items-center justify-center">
+    <div className="flex items-center justify-center w-full  h-full gap-4 bg-white  ">
+      <div className="absolute bottom-1 left-0 right-0 rounded-2xl mb-[-6px] bg-white mx-2 pb-4 flex items-center justify-center">
         <div className="flex items-center sm:gap-2 gap-1 p-1 w-full bg-white rounded-full shadow-lg border border-gray-100 sm:pr-4 pr-2">
          <input onKeyDown={(e) => {if (e.key === "Enter" && message.trim()) {handleSendClientEvent();}}}
         type="text"
