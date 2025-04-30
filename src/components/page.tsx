@@ -7,6 +7,7 @@ import { createEventMessage, systemPrompt, welcomeMessage } from '../assets/prom
 import MicButton from './MicButton';
 import { ToastContainer } from 'react-toastify';
 import { successToast } from '../Toasts/toast';
+import axios from 'axios';
 
 const page = () => {
   const [isSessionActive, setIsSessionActive] = useState<boolean>(false);
@@ -21,23 +22,106 @@ const page = () => {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<Message[]>([{ text: welcomeMessage, isUser: false, timestamp: new Date() }]);
+  
+  // Audio recording state
+  const mediaRecorder = useRef<MediaRecorder | null>(null);
+  const audioChunks = useRef<Blob[]>([]);
 
-  const enableMicrophone = (e: React.MouseEvent | React.TouchEvent) => {
+  const enableMicrophone = async (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     if (!peerConnection.current || !mediaStream.current) return;
-    mediaStream.current.getTracks().forEach(track => {
-      track.enabled = true;
-    });
-    setIsMicActive(true);
+    
+    try {
+      // Start recording
+      audioChunks.current = [];
+      mediaRecorder.current = new MediaRecorder(mediaStream.current);
+      
+      mediaRecorder.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunks.current.push(event.data);
+        }
+      };
+      
+      mediaRecorder.current.start();
+      
+      // Enable microphone
+      mediaStream.current.getTracks().forEach(track => {
+        track.enabled = true;
+      });
+      setIsMicActive(true);
+    } catch (error) {
+      console.error('Error starting recording:', error);
+    }
   };
 
-  const disableMicrophone = (e: React.MouseEvent | React.TouchEvent) => {
+  const disableMicrophone = async (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
-    if (!peerConnection.current || !mediaStream.current) return;
-    mediaStream.current.getTracks().forEach(track => {
-      track.enabled = false;
-    });
-    setIsMicActive(false);
+    if (!peerConnection.current || !mediaStream.current || !mediaRecorder.current) return;
+    
+    try {
+      // Stop recording
+      mediaRecorder.current.stop();
+      
+      // Disable microphone
+      mediaStream.current.getTracks().forEach(track => {
+        track.enabled = false;
+      });
+      setIsMicActive(false);
+      
+      // Wait for the recording to be complete
+      mediaRecorder.current.onstop = async () => {
+        const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
+        console.log('Audio chunks:', audioChunks.current.length);
+        console.log('Audio blob size:', audioBlob.size);
+        
+        // Only proceed if we have audio data
+        if (audioBlob.size === 0) {
+          console.error('No audio data recorded');
+          return;
+        }
+
+        const audioFile = new File([audioBlob], 'audio.webm', { type: 'audio/webm' });
+        
+        console.log('Sending file to Whisper API:', {
+          size: audioFile.size,
+          type: audioFile.type,
+          name: audioFile.name
+        });
+
+        try {
+          const formData = new FormData();
+          formData.append('file', audioFile);
+          formData.append('model', 'whisper-1');
+          
+          const response = await axios.post('https://api.openai.com/v1/audio/transcriptions', formData, {
+            headers: {
+              Authorization: `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
+              'Content-Type': 'multipart/form-data',
+            },
+          });
+          
+          const transcribedText = response.data.text;
+          console.log('Transcription:', transcribedText);
+          
+          // Add the transcribed text as a user message
+          if (transcribedText) {
+            sendTextMessage(transcribedText);
+          }
+        } catch (error) {
+          if (axios.isAxiosError(error)) {
+            console.error('Error transcribing audio:', {
+              status: error.response?.status,
+              statusText: error.response?.statusText,
+              data: error.response?.data
+            });
+          } else {
+            console.error('Error transcribing audio:', error);
+          }
+        }
+      };
+    } catch (error) {
+      console.error('Error stopping recording:', error);
+    }
   };
 
   async function startSession() {
@@ -49,6 +133,7 @@ const page = () => {
       return;
     }
     const data = await tokenResponse.json();
+    console.log("Token Response:", data);
     const EPHEMERAL_KEY = data.client_secret.value;
     console.log("Ephemeral Key:", EPHEMERAL_KEY);
     // Create a peer connection
