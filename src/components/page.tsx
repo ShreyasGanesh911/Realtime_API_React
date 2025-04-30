@@ -127,7 +127,7 @@ const page = () => {
   async function startSession() {
     try {
          // Get a session token for OpenAI Realtime API
-    const tokenResponse = await fetch("http://localhost:8888/token");
+    const tokenResponse = await fetch("/token");
     if (!tokenResponse.ok) {
       console.error("Failed to fetch token:", tokenResponse.statusText);
       return;
