@@ -7,12 +7,11 @@ type Props = {
 function MicButton({enableMicrophone,disableMicrophone,isMicActive}:Props) {
   return (
     <>
-      <button
-                onMouseDown={enableMicrophone}
-                onMouseUp={disableMicrophone}
-                onMouseLeave={disableMicrophone}
-                onTouchStart={enableMicrophone}
-                onTouchEnd={disableMicrophone}
+      <div  
+                onContextMenu={(e) => e.preventDefault()}
+                onPointerDown={enableMicrophone}
+                onPointerUp={disableMicrophone}
+                onPointerLeave={disableMicrophone}
                 className={`
                   absolute sm:right-24 right-20 mr-2 bottom-6.5 p-3
                   rounded-full transition-all duration-300 ease-in-out
@@ -37,7 +36,7 @@ function MicButton({enableMicrophone,disableMicrophone,isMicActive}:Props) {
                 ) : (
                   <MicOff size={16} />
                 )}
-              </button>
+              </div>
     </>
   )
 }
