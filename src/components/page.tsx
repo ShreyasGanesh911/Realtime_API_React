@@ -8,6 +8,7 @@ import MicButton from './MicButton';
 import { ToastContainer } from 'react-toastify';
 import { successToast } from '../Toasts/toast';
 import axios from 'axios';
+import { StopCircle } from 'react-feather';
 
 const page = () => {
   const [isSessionActive, setIsSessionActive] = useState<boolean>(false);
@@ -28,7 +29,7 @@ const page = () => {
   const audioChunks = useRef<Blob[]>([]);
 
   const enableMicrophone = async (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
+    // e.preventDefault();
     if (!peerConnection.current || !mediaStream.current) return;
     
     try {
@@ -55,7 +56,7 @@ const page = () => {
   };
 
   const disableMicrophone = async (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
+    // e.preventDefault();
     if (!peerConnection.current || !mediaStream.current || !mediaRecorder.current) return;
     
     try {
@@ -309,6 +310,16 @@ const page = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  function stopAISpeech() {
+    if (dataChannel) {
+      sendClientEvent({ type: "response.stop" });
+      if (audioElement.current) {
+        audioElement.current.pause();
+        audioElement.current.currentTime = 0;
+      }
+    }
+  }
+
   return (
     <>
       <div className="flex justify-center items-start min-h-screen bg-gray-50 p-4">
@@ -324,7 +335,24 @@ const page = () => {
             <SessionControls   startSession={startSession} stopSession={stopSession}
               sendClientEvent={sendClientEvent} sendTextMessage={sendTextMessage}
               serverEvents={events} isSessionActive={isSessionActive} />
-            {isSessionActive && <MicButton disableMicrophone={disableMicrophone} enableMicrophone={enableMicrophone} isMicActive={isMicActive}/> }
+            {isSessionActive && (
+              <div className="flex gap-2 absolute right-20 bottom-6.5">
+                <MicButton disableMicrophone={disableMicrophone} enableMicrophone={enableMicrophone} isMicActive={isMicActive}/>
+                <button
+                  onClick={stopAISpeech}
+                  className="p-3 rounded-full transition-all duration-300 ease-in-out
+                    shadow-md hover:shadow-lg transform hover:scale-105
+                    flex items-center justify-center bg-white text-gray-600 
+                    hover:bg-gray-50 border border-gray-200"
+                  style={{
+                    backdropFilter: 'blur(8px)',
+                    WebkitBackdropFilter: 'blur(8px)'
+                  }}
+                >
+                  <StopCircle size={16} />
+                </button>
+              </div>
+            )}
         </div>
         </div>
     </div>
