@@ -26,7 +26,7 @@ const page = () => {
   // Audio recording state
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
-
+  
   const enableMicrophone = async (e: React.MouseEvent | React.TouchEvent) => {
     // e.preventDefault();
     if (!peerConnection.current || !mediaStream.current) return;
@@ -71,9 +71,6 @@ const page = () => {
       // Wait for the recording to be complete
       mediaRecorder.current.onstop = async () => {
         const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
-        console.log('Audio chunks:', audioChunks.current.length);
-        console.log('Audio blob size:', audioBlob.size);
-        
         // Only proceed if we have audio data
         if (audioBlob.size === 0) {
           console.error('No audio data recorded');
@@ -82,11 +79,11 @@ const page = () => {
 
         const audioFile = new File([audioBlob], 'audio.webm', { type: 'audio/webm' });
         
-        console.log('Sending file to Whisper API:', {
-          size: audioFile.size,
-          type: audioFile.type,
-          name: audioFile.name
-        });
+        // console.log('Sending file to Whisper API:', {
+        //   size: audioFile.size,
+        //   type: audioFile.type,
+        //   name: audioFile.name
+        // });
 
         try {
           const formData = new FormData();
@@ -101,7 +98,6 @@ const page = () => {
           });
           
           const transcribedText = response.data.text;
-          console.log('Transcription:', transcribedText);
           
           // Add the transcribed text as a user message
           if (transcribedText) {
@@ -127,13 +123,12 @@ const page = () => {
   async function startSession() {
     try {
          // Get a session token for OpenAI Realtime API
-    const tokenResponse = await fetch("/token");
+    const tokenResponse = await fetch("http://localhost:8888/token");
     if (!tokenResponse.ok) {
       console.error("Failed to fetch token:", tokenResponse.statusText);
       return;
     }
     const data = await tokenResponse.json();
-    console.log("Token Response:", data);
     const EPHEMERAL_KEY = data.client_secret.value;
     console.log("Ephemeral Key:", EPHEMERAL_KEY);
     // Create a peer connection
